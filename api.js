@@ -2,6 +2,7 @@
 const express = require('express') //me-return sebuah function
 const app = express() //function yg mereturn sebuah object
 const port = 2020
+app.use(express.json())
 
 // FOR BODY
 const bodyParser = require('body-parser') // agar kita bisa membaca object saat axios.post
@@ -10,6 +11,7 @@ app.use(bodyParser.json())
 //for MongoDB
 const mongodb = require('mongodb')
 const MongoClient = mongodb.MongoClient
+const ObjectID = mongodb.ObjectID
 
 const URL = 'mongodb://127.0.0.1:27017'
 const database = 'nyobaMongo' //database name
@@ -54,24 +56,151 @@ MongoClient.connect(URL, {useNewURLParser: true}, (err, client) => {
             {name:'RC Car', desc: "Best Car in City", price: 12000},
         ])
     })
-    
+
     //create something here
     app.get('/users', (req, res) => { //req: inputan dari user, res: cara respon
-        db.collection('users').find({}).toArray((err, users) => {
-            res.send(users)
+        db.collection('users').find({}).toArray()
+           .then(doc => {
+               if (doc.length === 0){
+                   return res.send({
+                       err: 'Data not found'
+                   })
+               }
+               res.send(doc)
+           }).catch(err => {
+               res.send({err})
         })
     })
 
-    app.post('/register', (req,res) => {
-        const {nama, umur} = req.body
-        
-        db.collection('users').insertOne({name: nama, age: umur}).then(() => {
-            res.send({
-                message: 'Insert data success',
-                dataYgMasuk: {
-                    name: nama,
-                    age: umur
+    app.get('/usersparams', (req, res)=> {
+        var {age, name} = req.query
+        age = parseInt(age) // string to integer
+
+        if (!age || !name) { // if age or id or both undefined
+            return res.send({
+                err: "Please, provide name and age params"
+            })
+        }
+
+        db.collection('users').find({name: name, age: age }).toArray()
+            .then(doc => { // not found, [] || found : array of object
+                if(doc.length === 0){ 
+                    return res.send({
+                        err: `Data not found age: ${age} & name: ${name}`
+                    })
                 }
+                
+                res.send(doc) // send the data
+            }).catch(err => {
+                res.send({
+                    err
+                })
+            })
+        
+    })
+
+    app.get('/getuserwithid', (req, res) => {
+        var {id, name, age} = req.query
+        age = parseInt(age)
+        if(!id ||!name || !age){ // without name params, undefined
+            return res.send({
+                err: "Please provide \'id\', \'name\', \'age\' params for searching"
+            })
+        }
+
+        db.collection('users').findOne({_id: new ObjectID(id), name: name, age: age })
+            .then(doc => { // not found, null || found: one object                
+                if (doc) {  // found the user
+                    return res.send({
+                        err: "",
+                        keyword: name,
+                        doc: doc
+                    })
+                }
+
+                res.send({
+                    err: `Can not find the user with keyword: name: ${name} & age: ${age}`
+                })
+
+            }).catch(err => {
+                res.send({
+                    err: "Unable to do findOne operation"
+                })
+            })
+        
+    })
+
+    app.post('/postoneuser', (req, res) => {
+        var {name, age} = req.body   
+        age = parseInt(age)
+
+        if (!name || !age) { // if age or id or both undefined
+            return res.send({
+                err: "Please, provide name and age params"
+            })
+        }
+        
+        db.collection('users').insertOne({name, age})
+            .then(resp => {
+                res.send({
+                    err: "",
+                    executedStatus: resp.result.ok, // 1 : correctly
+                    insertedCount: resp.insertedCount,
+                    insertedId: resp.insertedId,
+                    user: resp.ops[0]
+                })
+            }).catch(err => {
+                res.send({
+                    err
+                })
+            })
+    })
+
+    app.delete('/user/:umur', (req, res) => {
+        const age = parseInt(req.params.umur)
+
+        if(!age){
+            return res.send({
+                err: "Please, provide params: age"
+            })
+        }
+        
+        db.collection('users').deleteOne({age: age}).then((resp) => {
+            
+            res.send({
+                message: "Success delete",
+                executedStatus: resp.result.ok,
+                count: resp.deletedCount
+            })
+        }).catch(err => {
+            res.send({
+                err: "Unable to do operation: deleteOne, collection: users"
+            })
+        })
+
+    })
+
+    app.put('/users/:nama', (req, res) =>{    
+        const {nama} = req.params
+        const newName = req.body.name
+        
+
+        db.collection('users').updateOne({
+            name: nama
+        },{
+            $set: {
+                name: newName
+            }
+        }).then(resp => {
+            res.send({
+                executedStatus: resp.result.ok,
+                scanned: resp.matchedCount,
+                modified: resp.modifiedCount
+
+            })
+        }).catch(err => {
+            res.send({
+                err: "Unable to do operation: updateOne"
             })
         })
     })
